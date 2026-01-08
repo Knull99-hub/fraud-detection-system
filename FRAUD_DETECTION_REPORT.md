@@ -58,5 +58,5 @@ A premium, dark-mode monitoring interface designed for real-time visibility:
 *   **Endpoint Protection**: All data-sensitive routes require a valid `Bearer` token in the HTTP header.
 
 ---
-**Prepared by**: Antigravity AI  
+
 **Repository**: `fraud-detection-system`
