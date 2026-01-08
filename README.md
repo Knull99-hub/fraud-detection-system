@@ -1,185 +1,138 @@
-# 🚀 Fraud Detection System
+# Fraud Detection System
 
-### **Real-Time Transaction Monitoring & Fraud Prevention using FastAPI, Kafka, Redis, and Docker**
+A high-performance, real-time transaction monitoring and fraud prevention platform leveraging Machine Learning, event streaming, and in-memory caching.
 
-![Python](https://img.shields.io/badge/Python-3.8%2B-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-High%20Performance-green) ![Kafka](https://img.shields.io/badge/Kafka-Streaming-red) ![Docker](https://img.shields.io/badge/Docker-Containerized-blue)
+## Project Overview
 
-## 🚨 Why This Project Matters
+This system is engineered to detect fraudulent financial transactions in milliseconds. It follows a microservices architecture designed for scalability and reliability, mimicking the systems used by major payment processors.
 
-Financial fraud is a multi-billion-dollar problem. This **Fraud Detection System** is engineered to detect and prevent fraudulent transactions in **real-time** with near-perfect accuracy, leveraging **Machine Learning, Kafka event streaming, and high-performance APIs.**
-
-### 🔥 **Latest Performance Metrics**
-The model has achieved **exceptional results**, making it a strong candidate for production deployment:
-
-- **Precision:** `1.000` ✅ *(No false positives!)*
-- **Recall:** `0.935` 🔥 *(Detects nearly all fraud cases!)*
-- **F1-Score:** `0.966` 🎯 *(Perfect balance of precision & recall!)*
-- **Accuracy:** `1.000` 🚀 *(Near-perfect fraud detection!)*
-
-## 🌍 Overview
-
-The **Fraud Detection System** is a **real-time, scalable fraud prevention platform** that detects suspicious financial transactions **in milliseconds** using **FastAPI, Kafka, Redis, and Docker**. Designed to process **millions of transactions per second**, this project aligns with **high-scale distributed computing and cloud-based fraud detection strategies.**
+### Key Capabilities
+* Real-time event processing using Apache Kafka.
+* Low-latency risk scoring via XGBoost and LightGBM models.
+* High-performance API gateway built with FastAPI.
+* In-memory result caching using Redis for near-instant responses.
+* Persistent transaction logging and analytics with PostgreSQL.
 
 ---
 
-## 🛠 Key Features
+## System Architecture
 
-✅ **Real-Time Fraud Detection** with Kafka & ML  
-✅ **Lightning-Fast API** built on FastAPI  
-✅ **Microservices & Docker for Scalability**  
-✅ **Redis Caching for Instant Risk Decisions**  
-✅ **ML Model with High Precision & Recall**  
-✅ **Large-Scale Event Processing with Kafka**  
-✅ **Production-Ready with Automated Deployment**  
+### Application Structure
+
+```text
+fraud-detection-system/
+├── data/                   # Dataset files (CSV)
+├── notebooks/              # Research and model training notebooks
+├── src/                    # Source code
+│   ├── fastapi_service.py  # Main API Gateway
+│   ├── kafka_producer.py   # Transaction stream simulator (Producer)
+│   ├── kafka_consumer.py   # Real-time classifier (Consumer)
+│   ├── redis_cache.py      # Caching layer logic
+│   └── *.pkl               # Trained Machine Learning models
+├── docker-compose.yml      # Infrastructure orchestration (Kafka, Redis, Postgres)
+└── requirements.txt        # Python dependencies
+```
+
+### Sequence Diagram: Transaction Processing Flow
+
+This diagram illustrates how a transaction moves from submission to final decision.
+
+```mermaid
+sequenceDiagram
+    participant U as User/Purchase
+    participant API as FastAPI Gateway
+    participant K as Kafka Broker
+    participant C as ML Consumer
+    participant R as Redis Cache
+    participant DB as Postgres DB
+
+    U->>API: Submit Transaction
+    API->>R: Check Cache (Transaction ID)
+    alt Cache Hit
+        R-->>API: Return Cached Score
+        API-->>U: Return Result
+    else Cache Miss
+        API->>K: Publish Transaction Event
+        K->>C: Stream Event to Consumer
+        C->>C: ML Model Prediction
+        C->>API: Update Prediction Result
+        C->>R: Cache Prediction (1 Hour)
+        C->>DB: Log Transaction & Score
+        API-->>U: Return Risk Decision
+    end
+```
+
+### Use Case Diagram
+
+```mermaid
+graph TD
+    User((User/Client))
+    Admin((Bank Admin))
+    
+    User -->|Submit Transaction| API[FastAPI API]
+    User -->|Check Health| API
+    
+    API -->|Predict Fraud| ML[Machine Learning Layer]
+    API -->|Fetch Statistics| DB[(PostgreSQL)]
+    
+    Admin -->|Review Dashboard| API
+    Admin -->|Analyze Trends| DB
+```
+
+### State Diagram: Transaction Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> Pending: Transaction Submitted
+    Pending --> Caching: Check Redis
+    Caching --> Informed: Cache Hit
+    Caching --> Streaming: Cache Miss
+    Streaming --> Processing: Kafka Topic Received
+    Processing --> Analyzing: ML Inference
+    Analyzing --> Scored: Prediction Generated
+    Scored --> Informed: Update Result
+    Informed --> Logged: Save to Database
+    Logged --> [*]
+```
 
 ---
 
-## 🏗 Project Architecture
-```
-               ┌──────────────────────────────────────────┐
-               │               User Request               │
-               └──────────────────────────────────────────┘
-                                    │
-                                    ▼
-              ┌───────────────────────────────────────────┐
-              │              FastAPI (API Gateway)        │
-              │   - Receives transaction data             │
-              │   - Sends transactions to Kafka           │
-              └───────────────────────────────────────────┘
-                                    │
-                                    ▼
-              ┌───────────────────────────────────────────┐
-              │              Kafka (Event Stream)         │
-              │   - Producer sends transactions           │
-              │   - Consumer processes transactions       │
-              └───────────────────────────────────────────┘
-                                    │
-                                    ▼
-              ┌───────────────────────────────────────────┐
-              │              Fraud Detection Model        │
-              │   - ML-based fraud scoring                │
-              │   - Threshold-based detection             │
-              └───────────────────────────────────────────┘
-                                    │
-                                    ▼
-              ┌───────────────────────────────────────────┐
-              │              Redis (Cache)                │
-              │   - Caches high-risk transactions         │
-              │   - Reduces API response time             │ 
-              └───────────────────────────────────────────┘
-                                    │
-                                    ▼
-              ┌───────────────────────────────────────────┐
-              │              Database (Optional)          │
-              │   - Stores transaction history            │
-              │   - Enables reporting & analytics         │
-              └───────────────────────────────────────────┘
-```
+## Use Cases
 
+### 1. Real-Time Credit Card Monitoring
+Detecting stolen card usage by identifying anomalies in purchase behavior (e.g., unusual amounts, geographical shifts, or high-frequency transactions).
+
+### 2. High-Volume Payment Gateways
+Integrating with e-commerce platforms to provide instant risk scores during the checkout process to prevent chargebacks.
+
+### 3. Regulatory Compliance & Auditing
+Maintaining a permanent, auditable trail of all transactions and their associated risk scores to meet financial reporting requirements.
 
 ---
 
-## ⚡ Tech Stack
+## Getting Started on Windows 11
 
-| Technology   | Purpose |
-|-------------|---------|
-| **FastAPI**  | High-performance API framework |
-| **Kafka**  | Event streaming for real-time transactions |
-| **Redis**  | In-memory caching for ultra-fast responses |
-| **Docker**  | Containerization & deployment |
-| **Uvicorn**  | ASGI server for FastAPI |
-| **Python**  | Core backend logic |
-| **PostgreSQL (Optional)** | Storing transaction history |
+### Prerequisites
+* Docker Desktop installed and running.
+* Python 3.9 or higher.
 
----
-
-## 🚀 Installation & Setup
-
-### **Pre-requisites**
-Ensure you have the following installed:
-- **Python 3.8+**
-- **Docker & Docker-Compose**
-- **Kafka & Zookeeper**
-- **Redis**
-
-### **Clone the Repository**
-```bash
-git clone https://github.com/yourusername/fraud-detection-system.git
-cd fraud-detection-system
-```
-
-### Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### Start Services
-
-#### Run with Docker
-
-```bash
-docker-compose up --build -d
-```
-
-#### Run Locally (Without Docker)
-
-```bash
-# Start Redis
-redis-server --daemonize yes
-
-# Start Zookeeper
-zookeeper-server-start.sh /usr/local/etc/kafka/zookeeper.properties &
-
-# Start Kafka Broker
-kafka-server-start.sh /usr/local/etc/kafka/server.properties &
-
-# Start FastAPI
-uvicorn src.fastapi_service:app --host 0.0.0.0 --port 8001
-```
-
-## API Endpoints
-
-| Method | Endpoint | Description |
-|--------|---------|-------------|
-| **GET** | `/` | Health check (Returns "Fraud Detection API is running!") |
-| **POST** | `/predict` | Detects fraud from transaction data |
-| **GET** | `/transactions` | Fetch recent transactions |
-
-### Example Request
-
-#### Detect Fraud (POST `/predict`)
-
-```json
-{
-  "amount": 5000,
-  "location": "New York",
-  "transaction_type": "credit",
-  "risk_score": 0.85
-}
-```
-
-#### Response
-
-```json
-{
-  "fraudulent": true,
-  "confidence": 95.7,
-  "message": "Transaction flagged as potential fraud"
-}
-```
-
-## Future Enhancements
-
-- ✅ **Advanced Machine Learning Enhancements** (Deep Learning & XGBoost)
-- ✅ **Real-Time Live Dashboard (Tableau & Dash Web UI)**
-- ✅ **Full CI/CD Deployment on AWS / Azure**
-- ✅ **Automated Model Retraining with Real-World Data**
-
-## Want to See More?
-
-📂 **Code Repository**: [GitHub](https://github.com/veedhibhanushali/fraud-detection-system)  
-📬 **Contact**: [Email](mailto:bhanushaliveedhi@sjsu.edu)  
-📝 **Author**: *[Veedhi Bhanushali](https://veedhibhanushali.com)*  
-
-
+### Setup Instructions
+1. Start infrastructure:
+   ```powershell
+   docker compose up -d
+   ```
+2. Setup environment:
+   ```powershell
+   python -m venv venv_win
+   .\venv_win\Scripts\activate
+   pip install -r requirements.txt
+   ```
+3. Run services (open separate terminals):
+   ```powershell
+   # API
+   uvicorn src.fastapi_service:app --port 8001
+   
+   # Real-time Simulation
+   python src/kafka_producer.py
+   python src/kafka_consumer.py
+   ```
