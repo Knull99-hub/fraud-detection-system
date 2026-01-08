@@ -13,6 +13,10 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 import csv
 import io
+from datetime import timedelta
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
 # Setup logging
 logging.basicConfig(
@@ -33,12 +37,14 @@ try:
     # Initialize database connection
     # Replace with your actual database credentials
     DB_HOST = os.getenv("DB_HOST", "localhost")
+    DB_PORT = os.getenv("DB_PORT", "5433")
     DB_NAME = os.getenv("DB_NAME", "fraud_detection")
     DB_USER = os.getenv("DB_USER", "postgres")
     DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
     
     conn = psycopg2.connect(
         host=DB_HOST,
+        port=DB_PORT,
         database=DB_NAME,
         user=DB_USER,
         password=DB_PASSWORD
@@ -64,15 +70,85 @@ except Exception as e:
     logger.warning(f"Database connection failed: {str(e)}")
     db_available = False
 
+# Security Configuration
+SECRET_KEY = "your-secret-key-change-this-in-production"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+# Simple In-Memory User for Demo
+FAKE_USERS_DB = {
+    "admin": {
+        "username": "admin",
+        "full_name": "Admin User",
+        "email": "admin@example.com",
+        "hashed_password": pwd_context.hash("admin123"),
+        "disabled": False,
+    }
+}
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    username: Optional[str] = None
+
+class User(BaseModel):
+    username: str
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+    disabled: Optional[bool] = None
+
+class UserInDB(User):
+    hashed_password: str
+
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.datetime.utcnow() + datetime.timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+        token_data = TokenData(username=username)
+    except JWTError:
+        raise credentials_exception
+    user = FAKE_USERS_DB.get(token_data.username)
+    if user is None:
+        raise credentials_exception
+    return User(**user)
+
 app = FastAPI(title="Fraud Detection API")
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins in development
+    allow_origins=["http://localhost:3000"],  # Specifically allow the dashboard
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Load trained model
@@ -145,8 +221,23 @@ def health_check():
         "database_connected": db_available
     }
 
+@app.post("/token", response_model=Token)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    user = FAKE_USERS_DB.get(form_data.username)
+    if not user or not verify_password(form_data.password, user["hashed_password"]):
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user["username"]}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
 @app.post("/predict", response_model=PredictionResponse)
-def predict_fraud(transaction: Transaction):
+def predict_fraud(transaction: Transaction, current_user: User = Depends(get_current_user)):
     """Predict fraud for a single transaction"""
     if model is None:
         raise HTTPException(status_code=500, detail="Model not loaded")
@@ -208,7 +299,7 @@ def predict_fraud(transaction: Transaction):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/predict/batch", response_model=BatchPredictionResponse)
-def predict_batch(batch: BatchTransactions):
+def predict_batch(batch: BatchTransactions, current_user: User = Depends(get_current_user)):
     """Predict fraud for a batch of transactions"""
     if model is None:
         raise HTTPException(status_code=500, detail="Model not loaded")
@@ -293,7 +384,7 @@ def predict_batch(batch: BatchTransactions):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/predict/csv")
-async def predict_from_csv(file: UploadFile = File(...)):
+async def predict_from_csv(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
     """Predict fraud from CSV file upload"""
     if model is None:
         raise HTTPException(status_code=500, detail="Model not loaded")
@@ -329,7 +420,7 @@ async def predict_from_csv(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/transactions")
-def get_recent_transactions(limit: int = 100):
+def get_recent_transactions(limit: int = 100, current_user: User = Depends(get_current_user)):
     """Get recent transactions from the database"""
     if not db_available:
         raise HTTPException(status_code=503, detail="Database not available")
@@ -363,7 +454,7 @@ def get_recent_transactions(limit: int = 100):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/stats")
-def get_fraud_stats():
+def get_fraud_stats(current_user: User = Depends(get_current_user)):
     """Get fraud statistics for dashboard"""
     if not db_available:
         raise HTTPException(status_code=503, detail="Database not available")
